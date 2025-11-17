@@ -7,62 +7,46 @@ void delay(uint32_t ticks) {
 	}
 }
 
-uint8_t SPI1_Read(void)
-{
- SPI1->DR = 0; //запускаем обмен
-  //Ждем, пока не появится новое значение
- //в буфере приемника
- while(!(SPI1->SR & SPI_SR_RXNE));
-  //возвращаем значение буфера приемника
- return SPI1->DR;
+/* Interrupt handler */
+void TIM2_IRQHandler(void) {
+	if (TIM2->SR & TIM_SR_UIF) {
+	/* Toggle GPIO here */
+	if(GPIOC->ODR & GPIO_ODR_ODR13){
+		GPIOC->ODR &= ~GPIO_ODR_ODR13;
+	} else {
+		GPIOC->ODR |= GPIO_ODR_ODR13;
+	}
+ 	//Clear Interrupt flag
+	TIM2->SR &= ~TIM_SR_UIF;
+	}
 }
 
-void SPI1_Write(uint8_t data)
-{
- //Ждем, пока не освободится буфер передатчика
- while(!(SPI1->SR & SPI_SR_TXE));
-  //заполняем буфер передатчика
- SPI1->DR = data;
-}
-
-void display_cmd(uint8_t cmd){
-	GPIOA->ODR &= ~GPIO_ODR_ODR4; // CS=0
-	GPIOA->ODR &= ~GPIO_ODR_ODR1; // DC=0
-	delay(1000);
-	SPI1_write(cmd);
-	GPIOA->ODR |= GPIO_ODR_ODR4; // CS=1
-}
 
 int __attribute((noreturn)) main(void) {
 	// Enable clock for GPIOC
 	RCC->APB2ENR |= RCC_APB2ENR_IOPCEN | RCC_APB2ENR_IOPAEN;
-	// Enable clock for SPI1
-	RCC->APB2ENR |= RCC_APB2ENR_SPI1EN;
-
-	// Configure SPI
-	SPI1->CR1 |= SPI_CR1_CPOL | SPI_CR1_CPHA |
-				SPI_CR1_MSTR | SPI_CR1_BR |
-				SPI_CR1_SSM | SPI_CR1_SPE;
-
 
 	// Enable PC13 push-pull mode
 	GPIOC->CRH &= ~(GPIO_CRH_CNF13 | GPIO_CRH_MODE13); //clear cnf13, mode13 bits
 	GPIOC->CRH |= GPIO_CRH_MODE13_1; //Max speed = 10Mhz
 
-	// Configure SPI Pins
-	GPIOA->CRL &= ~(GPIO_CRL_CNF2 | GPIO_CRL_MODE2);
-	GPIOA->CRL 
+   	RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+   	RCC->APB1RSTR |= RCC_APB1RSTR_TIM2RST;
+   	RCC->APB1RSTR &= ~RCC_APB1RSTR_TIM2RST;
+   	TIM2->PSC = 719;
+   	TIM2->ARR = 25000;
+   	TIM2->DIER |= TIM_DIER_UIE; // Enable Update Interrupt
+   	NVIC_ClearPendingIRQ(TIM2_IRQn);
+   	NVIC_EnableIRQ(TIM2_IRQn); // Enable IRQ in NVIC
 
-	// Configure Display Pins
-	uint8_t display_on = 1; // 0 or 1
-	display_cmd(0xAE | display_on);
+   	TIM2->CR1 |= TIM_CR1_CEN; // Start timer
 
     while (1) {
 	    //GPIOC->ODR |= (1U<<13U); //U -- unsigned suffix (to avoid syntax warnings in IDE)
-		GPIOC->ODR |= GPIO_ODR_ODR13;
-		delay(1000000);
+		//GPIOC->ODR |= GPIO_ODR_ODR13;
+		//delay(1000000);
 	    //GPIOC->ODR &= ~(1U<<13U);
-		GPIOC->ODR &= ~GPIO_ODR_ODR13;
-	    delay(1000000);
+		//GPIOC->ODR &= ~GPIO_ODR_ODR13;
+	    //delay(1000000);
     }
 }
